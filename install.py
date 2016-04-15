@@ -29,7 +29,6 @@ Install Freeswitch prior to installing Fusionpbx
 """
 
 import subprocess
-import apt
 import os
 import sys
 import socket
@@ -49,7 +48,8 @@ KNOWN_DISTROS = ["lucid",
                  "wheezy",
                  "precise",
                  "jessie",
-                 "wily"
+                 "wily",
+                 "trusty"
                  ]
 #===============================================================================
 # TimeZone data
@@ -122,28 +122,6 @@ oneonly_group.add_argument("-o", "--One", action = "store_true", help = "Run One
 restart_group.add_argument("-r", "--restart", action = "store_true", help = "Restart a failed install")
 
 #===============================================================================
-# Install vim and dbus up front
-#===============================================================================
-
-print ("Installing dbus as it is required")
-pkg_name="dbus"
-cache = apt.cache.Cache()
-cache.update()
-
-pkg = cache[pkg_name]
-if pkg.is_installed:
-    print ("{pkg_name} already installed".format(pkg_name=pkg_name))
-else:
-    pkg.mark_install()
-
-    try:
-        cache.commit()
-        print("dbus installed")
-    except Exception:
-        "Failed to install dbus"
-
-
-#===============================================================================
 # Default is to install all from the start
 #===============================================================================
 
@@ -161,8 +139,19 @@ if not args.restart:
 
 user = os.getuid()
 if not user == 0:
-    print("This install script must run as root")
+    print("This install script must be run as root")
     sys.exit(1)
+    
+#===============================================================================
+# Install dbus up front
+# NOTE: It is possible to install with out dbus
+#       dbus is needed to set the timezone and for other operations
+#===============================================================================
+
+print("Welcome to FusionPBX installation.")
+print ("Installing dbus as it is required")
+ret = subprocess.call("apt-get install dbus", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=True)
+FPBXParms.check_ret(ret, "Updating the OS repository")
     
 #===============================================================================
 # Make sure we have current parameters to continue
@@ -265,30 +254,33 @@ if not args.restart:
         print("The time zone is not changed on this system")    
     print("I will now check several necessary requirements")
 
-#------------------------------------------------------------------------------ 
-# line = subprocess.check_output("who am i", shell=True)
-# parts = line.split()
-# ip = parts[4].decode("utf-8")
-# ip = ip.strip('(')
-# ip = ip.strip(')')
+#===============================================================================
+# Check to see if we are in via ssh, if so, offer to white list the user's address 
+#===============================================================================
+
 ip = os.getenv("SSH_CONNECTION","127.0.0.1").split(" ")[0]
-print()
-print("During initial installation it is easy to get locked out of your server. ")
-print("It appears you are connected from %s" % (ip))
-ans = input("Would you like to white list this address? (y/n)")
-if ans == 'y':
-    FPBXParms.whitelist = ip
+if len(ip) > 0:
+    print()
+    print("During initial installation it is easy to get locked out of your server. ")
+    print("It appears you are connected from %s" % (ip))
+    ans = ask_yn("Would you like to white list this address")
+    if ans == 'Yes':
+        FPBXParms.whitelist = ip
+else:
+    FPBXParms.whitelist = None
 #------------------------------------------------------------------------------ 
 
 #===============================================================================
 # OK we have the parameters now let's see what release we are working under
 #===============================================================================
-# First check to see if this is Debian
+# First check to see if we know how to install in this environment
 #===============================================================================
 
 ret = subprocess.check_output("uname -v", shell=True)
-if "Debian" not in str(ret):
-    print("This install procedure only runs under a Debian version of Linux")
+if "Debian" in str(ret) or "Ubuntu" in str(ret):
+    pass
+else:
+    print("This install procedure only runs under a Debian or Ubuntu version of Linux")
     sys.exit(1)
 
 lsb_line = subprocess.check_output('lsb_release -c', shell=True)
@@ -332,6 +324,13 @@ except:
     print("Please insure Internet availability and run this script again")
     sys.exit(2)
 
+#===============================================================================
+# Check for package install of freeswitch and distro trusty
+#===============================================================================
+
+if FPBXParms.PARMS["Distro"][0] == "trusty" and FPBXParms.PARMS["FS_Install_Type"][0] == 'P':
+    print("There are no packages for Ubuntu trusty, I will install from source")
+    FPBXParms.PARMS["FS_Install_Type"][0] = 's'
 
 FPBXParms.save_parms()
 
@@ -340,9 +339,11 @@ FPBXParms.save_parms()
 #===============================================================================
 
 FPBXParms.show_parms()
-print("The Debian Linux distribution appears to be code named %s" % (FPBXParms.PARMS["Distro"][0]))
+print("The Linux distribution appears to be code named %s" % (FPBXParms.PARMS["Distro"][0]))
 print()
 INSTALL_PROGRESS = load_parms(INSTALL_PROGRESS)
+
+
 
 #===============================================================================
 # Ask the burning question
