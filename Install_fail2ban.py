@@ -31,6 +31,26 @@ import FPBXParms
 
 def ifail2ban():
     
+    ipt_cmds = ["iptables -A INPUT -i lo -j ACCEPT",
+                "iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT",
+                "iptables -A INPUT -p tcp --dport 22 -j ACCEPT",
+                "iptables -A INPUT -p tcp --dport 80 -j ACCEPT",
+                "iptables -A INPUT -p tcp --dport 443 -j ACCEPT",
+                "iptables -A INPUT -p tcp --dport 5060 -j ACCEPT",
+                "iptables -A INPUT -p udp --dport 5060 -j ACCEPT",
+                "iptables -A INPUT -p tcp --dport 5080 -j ACCEPT",
+                "iptables -A INPUT -p udp --dport 5080 -j ACCEPT",
+                "iptables -A INPUT -p udp --dport 16384:32768 -j ACCEPT",
+                "iptables -P INPUT DROP",
+                "iptables -P FORWARD DROP",
+                "iptables -P OUTPUT ACCEPT",
+                "iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT",
+                "iptables -I INPUT -j DROP -p tcp --dport 5060 -m string --string \"friendly-scanner\" --algo bm",
+                "iptables -I INPUT -j DROP -p tcp --dport 5080 -m string --string \"friendly-scanner\" --algo bm",
+                "iptables -I INPUT -j DROP -p udp --dport 5060 -m string --string \"friendly-scanner\" --algo bm",
+                "iptables -I INPUT -j DROP -p udp --dport 5080 -m string --string \"friendly-scanner\" --algo bm"                
+                ]
+    
     INSTALL_ROOT = os.getcwd()
     if os.path.isfile("%s/resources/install.json" % (INSTALL_ROOT)):
         FPBXParms.PARMS = FPBXParms.load_parms(FPBXParms.PARMS)
@@ -55,4 +75,14 @@ def ifail2ban():
                 ftb.close()
             ret = subprocess.call("systemctl restart fail2ban", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=True)
             FPBXParms.check_ret(ret, "Restart fail2ban")
+    
+    print("Setting iptables rules")      
+    for cmd in ipt_cmds:
+        ret = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=True)
+        FPBXParms.check_ret(ret, cmd)
+    print("Installing iptables persistence module")
+    print("You will see two questions about saving the iptable rules")
+    print("Please select yes when asked")
+    ans = input("press ENTER when you are ready")
+    subprocess.call("apt-get -y install iptables-persistent", shell=True)
     return
